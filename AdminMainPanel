@@ -1,0 +1,241 @@
+```lua
+--!strict
+-- Admin Panel for Roblox (Luau)
+-- Features: Toggle button, prefix "Admin", common admin commands, auto locator for needed files, custom animations, FE enabled
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+
+-- Auto locator for needed files
+local function getOrCreateFolder(name: string, parent: Instance): Folder
+	local folder = parent:FindFirstChild(name)
+	if not folder then
+		folder = Instance.new("Folder")
+		folder.Name = name
+		folder.Parent = parent
+	end
+	return folder
+end
+
+local AdminFolder = getOrCreateFolder("AdminPanel", ReplicatedStorage)
+local RemoteFolder = getOrCreateFolder("AdminRemotes", AdminFolder)
+
+-- RemoteEvents for FE
+local CommandEvent = RemoteFolder:FindFirstChild("CommandEvent") or Instance.new("RemoteEvent")
+CommandEvent.Name = "CommandEvent"
+CommandEvent.Parent = RemoteFolder
+
+-- Custom animation setup
+local function createCustomAnimation()
+	local animation = Instance.new("Animation")
+	animation.Name = "AdminWaveAnimation"
+	animation.AnimationId = "rbxassetid://507766666" -- Example animation (wave)
+	animation.Parent = AdminFolder
+	return animation
+end
+
+local AdminAnimation = createCustomAnimation()
+
+-- GUI Creation
+local function createAdminGui(player: Player)
+	local playerGui = player:WaitForChild("PlayerGui")
+
+	local screenGui = Instance.new("ScreenGui")
+	screenGui.Name = "AdminPanelGui"
+	screenGui.ResetOnSpawn = false
+	screenGui.Parent = playerGui
+
+	-- Toggle Button
+	local toggleButton = Instance.new("TextButton")
+	toggleButton.Name = "ToggleButton"
+	toggleButton.Text = "Admin"
+	toggleButton.Size = UDim2.new(0, 100, 0, 40)
+	toggleButton.Position = UDim2.new(0, 10, 0, 10)
+	toggleButton.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+	toggleButton.TextColor3 = Color3.new(1, 1, 1)
+	toggleButton.Parent = screenGui
+
+	-- Admin Frame (hidden by default)
+	local adminFrame = Instance.new("Frame")
+	adminFrame.Name = "AdminFrame"
+	adminFrame.Size = UDim2.new(0, 300, 0, 400)
+	adminFrame.Position = UDim2.new(0, 10, 0, 60)
+	adminFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+	adminFrame.Visible = false
+	adminFrame.Parent = screenGui
+
+	-- UIListLayout for commands
+	local layout = Instance.new("UIListLayout")
+	layout.Padding = UDim.new(0, 5)
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Parent = adminFrame
+
+	-- Command output label
+	local outputLabel = Instance.new("TextLabel")
+	outputLabel.Name = "OutputLabel"
+	outputLabel.Size = UDim2.new(1, -10, 0, 100)
+	outputLabel.Position = UDim2.new(0, 5, 1, -105)
+	outputLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+	outputLabel.TextColor3 = Color3.new(1, 1, 1)
+	outputLabel.TextWrapped = true
+	outputLabel.TextYAlignment = Enum.TextYAlignment.Top
+	outputLabel.Font = Enum.Font.SourceSans
+	outputLabel.TextSize = 14
+	outputLabel.Parent = adminFrame
+
+	-- Commands table
+	local commands = {
+		["kill"] = {
+			Description = "Kill a player",
+			Args = 1,
+			Func = function(targetPlayer: Player)
+				if targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") then
+					targetPlayer.Character.Humanoid.Health = 0
+				end
+			end,
+		},
+		["kick"] = {
+			Description = "Kick a player",
+			Args = 1,
+			Func = function(targetPlayer: Player)
+				targetPlayer:Kick("Kicked by Admin")
+			end,
+		},
+		["freeze"] = {
+			Description = "Freeze a player",
+			Args = 1,
+			Func = function(targetPlayer: Player)
+				if targetPlayer.Character then
+					for _, part in pairs(targetPlayer.Character:GetChildren()) do
+						if part:IsA("BasePart") then
+							part.Anchored = true
+						end
+					end
+				end
+			end,
+		},
+		["unfreeze"] = {
+			Description = "Unfreeze a player",
+			Args = 1,
+			Func = function(targetPlayer: Player)
+				if targetPlayer.Character then
+					for _, part in pairs(targetPlayer.Character:GetChildren()) do
+						if part:IsA("BasePart") then
+							part.Anchored = false
+						end
+					end
+				end
+			end,
+		},
+		["bring"] = {
+			Description = "Bring a player to you",
+			Args = 1,
+			Func = function(targetPlayer: Player, caller: Player)
+				if targetPlayer.Character and caller.Character and caller.Character:FindFirstChild("HumanoidRootPart") then
+					local hrp = caller.Character.HumanoidRootPart
+					targetPlayer.Character:SetPrimaryPartCFrame(hrp.CFrame * CFrame.new(0, 0, 5))
+				end
+			end,
+		},
+		["goto"] = {
+			Description = "Teleport to a player",
+			Args = 1,
+			Func = function(targetPlayer: Player, caller: Player)
+				if caller.Character and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+					local hrp = targetPlayer.Character.HumanoidRootPart
+					caller.Character:SetPrimaryPartCFrame(hrp.CFrame * CFrame.new(0, 0, 5))
+				end
+			end,
+		},
+		["animate"] = {
+			Description = "Play admin wave animation",
+			Args = 0,
+			Func = function(caller: Player)
+				if caller.Character then
+					local humanoid = caller.Character:FindFirstChildOfClass("Humanoid")
+					if humanoid then
+						local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator", humanoid)
+						local animTrack = animator:LoadAnimation(AdminAnimation)
+						animTrack:Play()
+					end
+				end
+			end,
+		},
+	}
+
+	-- Create buttons for commands
+	for cmdName, cmdData in pairs(commands) do
+		local btn = Instance.new("TextButton")
+		btn.Name = cmdName .. "Button"
+		btn.Text = cmdName .. " - " .. cmdData.Description
+		btn.Size = UDim2.new(1, -10, 0, 30)
+		btn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+		btn.TextColor3 = Color3.new(1, 1, 1)
+		btn.Font = Enum.Font.SourceSans
+		btn.TextSize = 16
+		btn.Parent = adminFrame
+
+		btn.MouseButton1Click:Connect(function()
+			local prefix = "Admin"
+			local args = {}
+
+			-- For commands that require args, prompt user
+			if cmdData.Args > 0 then
+				local input = Instance.new("TextBox")
+				input.Size = UDim2.new(1, -10, 0, 30)
+				input.Position = UDim2.new(0, 5, 0, 0)
+				input.PlaceholderText = "Enter player name"
+				input.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+				input.TextColor3 = Color3.new(1, 1, 1)
+				input.Font = Enum.Font.SourceSans
+				input.TextSize = 16
+				input.Parent = adminFrame
+				input:CaptureFocus()
+
+				local connection
+				connection = input.FocusLost:Connect(function(enterPressed)
+					if enterPressed then
+						local targetName = input.Text
+						local targetPlayer = Players:FindFirstChild(targetName)
+						if targetPlayer then
+							if cmdData.Args == 1 then
+								cmdData.Func(targetPlayer, player)
+								outputLabel.Text = prefix .. ": Executed " .. cmdName .. " on " .. targetName
+							end
+						else
+							outputLabel.Text = prefix .. ": Player '" .. targetName .. "' not found."
+						end
+					end
+					input:Destroy()
+					connection:Disconnect()
+				end)
+			else
+				cmdData.Func(player)
+				outputLabel.Text = prefix .. ": Executed " .. cmdName
+			end
+		end)
+	end
+
+	-- Toggle button functionality
+	toggleButton.MouseButton1Click:Connect(function()
+		adminFrame.Visible = not adminFrame.Visible
+	end)
+end
+
+-- Setup for each player
+Players.PlayerAdded:Connect(function(player)
+	-- Wait for character to load for animation safety
+	player.CharacterAdded:Wait()
+	createAdminGui(player)
+end)
+
+-- For players already in game
+for _, player in pairs(Players:GetPlayers()) do
+	if player.Character then
+		createAdminGui(player)
+	else
+		player.CharacterAdded:Wait()
+		createAdminGui(player)
+	end
